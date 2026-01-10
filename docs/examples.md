@@ -390,6 +390,127 @@ fun main(args: Array<String>) {
 }
 ```
 
+## Bot Protection with Challenge
+
+Issue challenges to suspicious requests:
+
+```kotlin
+package com.example
+
+import io.raskell.sentinel.agent.*
+
+class BotProtectionAgent(private val captchaSiteKey: String) : Agent {
+    override val name = "bot-protection"
+
+    private val suspiciousUserAgents = listOf(
+        "curl", "wget", "python-requests", "scrapy", "bot"
+    )
+
+    private fun isSuspicious(userAgent: String): Boolean {
+        val uaLower = userAgent.lowercase()
+        return suspiciousUserAgents.any { it in uaLower }
+    }
+
+    override suspend fun onRequest(request: Request): Decision {
+        // Check for missing or suspicious User-Agent
+        val userAgent = request.userAgent()
+
+        if (userAgent == null) {
+            // No User-Agent - issue JavaScript challenge
+            return Decision.challenge("js_challenge")
+                .withTag("no-user-agent")
+        }
+
+        // Check for known bot patterns
+        if (isSuspicious(userAgent)) {
+            return Decision.challenge("captcha", mapOf(
+                "site_key" to captchaSiteKey,
+                "action" to "bot_check"
+            ))
+                .withTag("suspicious-ua")
+                .withConfidence(0.75f)
+        }
+
+        // Check for high request rate from single IP (simplified)
+        if (request.header("x-high-rate") != null) {
+            return Decision.challenge("proof_of_work", mapOf(
+                "difficulty" to "medium"
+            ))
+                .withTag("rate-challenge")
+        }
+
+        return Decision.allow()
+    }
+}
+
+fun main(args: Array<String>) {
+    runAgent(BotProtectionAgent("your-captcha-site-key"), args)
+}
+```
+
+## Login Protection with CAPTCHA
+
+Protect login endpoints with CAPTCHA challenges:
+
+```kotlin
+package com.example
+
+import io.raskell.sentinel.agent.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+class LoginProtectionAgent(private val captchaSiteKey: String) : Agent {
+    override val name = "login-protection"
+
+    // Track failed login attempts per IP
+    private val failedAttempts = ConcurrentHashMap<String, AtomicInteger>()
+    private val challengeThreshold = 3
+
+    override suspend fun onRequest(request: Request): Decision {
+        // Only protect login endpoint
+        if (!request.pathEquals("/login") || !request.isPost()) {
+            return Decision.allow()
+        }
+
+        val clientIp = request.clientIp()
+        val attempts = failedAttempts.computeIfAbsent(clientIp) { AtomicInteger(0) }
+
+        // If too many failed attempts, require CAPTCHA
+        if (attempts.get() >= challengeThreshold) {
+            return Decision.challenge("captcha", mapOf(
+                "site_key" to captchaSiteKey,
+                "action" to "login"
+            ))
+                .withTag("login-challenge")
+                .withMetadata("failed_attempts", kotlinx.serialization.json.JsonPrimitive(attempts.get()))
+        }
+
+        return Decision.allow()
+    }
+
+    override suspend fun onResponse(request: Request, response: Response): Decision {
+        // Track failed login responses
+        if (request.pathEquals("/login") && request.isPost()) {
+            val clientIp = request.clientIp()
+            val attempts = failedAttempts.computeIfAbsent(clientIp) { AtomicInteger(0) }
+
+            if (response.statusCode() == 401) {
+                attempts.incrementAndGet()
+            } else if (response.isSuccess()) {
+                // Reset on successful login
+                attempts.set(0)
+            }
+        }
+
+        return Decision.allow()
+    }
+}
+
+fun main(args: Array<String>) {
+    runAgent(LoginProtectionAgent("your-captcha-site-key"), args)
+}
+```
+
 ## Combining Multiple Checks
 
 Agent that performs multiple validations:

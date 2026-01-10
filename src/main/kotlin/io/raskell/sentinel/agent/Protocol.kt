@@ -24,7 +24,28 @@ enum class EventType {
     @SerialName("response_headers") RESPONSE_HEADERS,
     @SerialName("response_body_chunk") RESPONSE_BODY_CHUNK,
     @SerialName("request_complete") REQUEST_COMPLETE,
-    @SerialName("websocket_frame") WEBSOCKET_FRAME
+    @SerialName("websocket_frame") WEBSOCKET_FRAME,
+    @SerialName("guardrail_inspect") GUARDRAIL_INSPECT
+}
+
+/**
+ * Type of guardrail inspection.
+ */
+@Serializable
+enum class GuardrailInspectionType {
+    @SerialName("prompt_injection") PROMPT_INJECTION,
+    @SerialName("pii_detection") PII_DETECTION
+}
+
+/**
+ * Severity level for guardrail detections.
+ */
+@Serializable
+enum class DetectionSeverity {
+    @SerialName("low") LOW,
+    @SerialName("medium") MEDIUM,
+    @SerialName("high") HIGH,
+    @SerialName("critical") CRITICAL
 }
 
 /**
@@ -114,6 +135,86 @@ data class RequestCompleteEvent(
     @SerialName("upstream_attempts") val upstreamAttempts: Int = 1,
     val error: String? = null
 )
+
+/**
+ * Text span indicating location in content.
+ */
+@Serializable
+data class TextSpan(
+    val start: Int,
+    val end: Int
+)
+
+/**
+ * A single guardrail detection.
+ */
+@Serializable
+data class GuardrailDetection(
+    val category: String,
+    val description: String,
+    val severity: DetectionSeverity = DetectionSeverity.MEDIUM,
+    val confidence: Double? = null,
+    val span: TextSpan? = null
+) {
+    fun withSeverity(severity: DetectionSeverity) = copy(severity = severity)
+    fun withConfidence(confidence: Double) = copy(confidence = confidence)
+    fun withSpan(start: Int, end: Int) = copy(span = TextSpan(start, end))
+}
+
+/**
+ * Guardrail inspection event.
+ */
+@Serializable
+data class GuardrailInspectEvent(
+    @SerialName("correlation_id") val correlationId: String,
+    @SerialName("inspection_type") val inspectionType: GuardrailInspectionType,
+    val content: String,
+    val model: String? = null,
+    val categories: List<String> = emptyList(),
+    @SerialName("route_id") val routeId: String? = null,
+    val metadata: Map<String, String> = emptyMap()
+)
+
+/**
+ * Response from guardrail inspection.
+ */
+@Serializable
+data class GuardrailResponse(
+    val detected: Boolean = false,
+    val confidence: Double = 0.0,
+    val detections: List<GuardrailDetection> = emptyList(),
+    @SerialName("redacted_content") val redactedContent: String? = null
+) {
+    companion object {
+        /**
+         * Create a clean response indicating nothing detected.
+         */
+        fun clean() = GuardrailResponse()
+
+        /**
+         * Create a response with a single detection.
+         */
+        fun withDetection(detection: GuardrailDetection) = GuardrailResponse(
+            detected = true,
+            confidence = detection.confidence ?: 1.0,
+            detections = listOf(detection)
+        )
+    }
+
+    /**
+     * Add a detection to this response.
+     */
+    fun addDetection(detection: GuardrailDetection) = copy(
+        detected = true,
+        confidence = maxOf(confidence, detection.confidence ?: 0.0),
+        detections = detections + detection
+    )
+
+    /**
+     * Set the redacted content for PII detection.
+     */
+    fun withRedactedContent(content: String) = copy(redactedContent = content)
+}
 
 /**
  * Header modification operation.

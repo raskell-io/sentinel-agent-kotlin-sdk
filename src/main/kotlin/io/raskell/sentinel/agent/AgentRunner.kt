@@ -210,6 +210,7 @@ class AgentRunner(private val agent: Agent) {
                 EventType.RESPONSE_HEADERS -> handleResponseHeaders(request.payload)
                 EventType.RESPONSE_BODY_CHUNK -> handleResponseBodyChunk(request.payload)
                 EventType.REQUEST_COMPLETE -> handleRequestComplete(request.payload)
+                EventType.GUARDRAIL_INSPECT -> handleGuardrailInspect(request.payload)
                 EventType.WEBSOCKET_FRAME -> AgentResponse.defaultAllow()
             }
         } catch (e: Exception) {
@@ -285,6 +286,23 @@ class AgentRunner(private val agent: Agent) {
         }
 
         return AgentResponse.defaultAllow()
+    }
+
+    private suspend fun handleGuardrailInspect(payload: JsonElement): AgentResponse {
+        val event = protocolJson.decodeFromJsonElement<GuardrailInspectEvent>(payload)
+        val response = agent.onGuardrailInspect(event)
+
+        // Convert GuardrailResponse to a JSON-compatible AgentResponse with custom audit
+        return AgentResponse(
+            audit = AuditMetadata(
+                tags = if (response.detected) listOf("guardrail_detected") else emptyList(),
+                ruleIds = response.detections.map { it.category },
+                confidence = response.confidence.toFloat(),
+                custom = mapOf(
+                    "guardrail_response" to protocolJson.encodeToJsonElement(GuardrailResponse.serializer(), response)
+                )
+            )
+        )
     }
 }
 

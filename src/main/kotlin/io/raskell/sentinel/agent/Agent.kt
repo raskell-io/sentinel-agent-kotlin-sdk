@@ -97,6 +97,17 @@ interface Agent {
     suspend fun onRequestComplete(request: Request, status: Int, durationMs: Long) {
         // Default: no-op
     }
+
+    /**
+     * Inspect content for guardrail violations.
+     *
+     * Called when content needs to be analyzed for prompt injection
+     * or PII detection. Override to implement custom guardrail logic.
+     *
+     * @param event The guardrail inspection event containing content and parameters
+     * @return GuardrailResponse indicating detection results
+     */
+    suspend fun onGuardrailInspect(event: GuardrailInspectEvent): GuardrailResponse = GuardrailResponse.clean()
 }
 
 /**
