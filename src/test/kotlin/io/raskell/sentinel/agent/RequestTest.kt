@@ -197,4 +197,46 @@ class RequestTest {
         assertNull(request.queryString)
         assertTrue(request.queryParams().isEmpty())
     }
+
+    @Test
+    fun `http method checks`() {
+        val getRequest = createRequest(method = "GET")
+        assertTrue(getRequest.isGet())
+        assertFalse(getRequest.isPost())
+        assertFalse(getRequest.isPut())
+        assertFalse(getRequest.isDelete())
+        assertFalse(getRequest.isPatch())
+
+        val postRequest = createRequest(method = "POST")
+        assertFalse(postRequest.isGet())
+        assertTrue(postRequest.isPost())
+
+        val putRequest = createRequest(method = "PUT")
+        assertTrue(putRequest.isPut())
+
+        val deleteRequest = createRequest(method = "DELETE")
+        assertTrue(deleteRequest.isDelete())
+
+        val patchRequest = createRequest(method = "PATCH")
+        assertTrue(patchRequest.isPatch())
+    }
+
+    @Test
+    fun `http method checks case insensitive`() {
+        val getRequest = createRequest(method = "get")
+        assertTrue(getRequest.isGet())
+
+        val postRequest = createRequest(method = "Post")
+        assertTrue(postRequest.isPost())
+    }
+
+    @Test
+    fun `head and options method checks`() {
+        val headRequest = createRequest(method = "HEAD")
+        assertTrue(headRequest.isHead())
+        assertFalse(headRequest.isGet())
+
+        val optionsRequest = createRequest(method = "OPTIONS")
+        assertTrue(optionsRequest.isOptions())
+    }
 }

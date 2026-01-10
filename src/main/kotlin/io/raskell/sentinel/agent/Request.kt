@@ -93,6 +93,31 @@ class Request internal constructor(
     fun pathMatches(regex: Regex): Boolean = regex.matches(path)
 
     // ========================================================================
+    // HTTP Method Checks
+    // ========================================================================
+
+    /** Check if this is a GET request. */
+    fun isGet(): Boolean = method.equals("GET", ignoreCase = true)
+
+    /** Check if this is a POST request. */
+    fun isPost(): Boolean = method.equals("POST", ignoreCase = true)
+
+    /** Check if this is a PUT request. */
+    fun isPut(): Boolean = method.equals("PUT", ignoreCase = true)
+
+    /** Check if this is a DELETE request. */
+    fun isDelete(): Boolean = method.equals("DELETE", ignoreCase = true)
+
+    /** Check if this is a PATCH request. */
+    fun isPatch(): Boolean = method.equals("PATCH", ignoreCase = true)
+
+    /** Check if this is a HEAD request. */
+    fun isHead(): Boolean = method.equals("HEAD", ignoreCase = true)
+
+    /** Check if this is an OPTIONS request. */
+    fun isOptions(): Boolean = method.equals("OPTIONS", ignoreCase = true)
+
+    // ========================================================================
     // Headers
     // ========================================================================
 

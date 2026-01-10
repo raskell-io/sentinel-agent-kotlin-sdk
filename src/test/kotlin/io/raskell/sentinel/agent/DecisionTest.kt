@@ -214,4 +214,20 @@ class DecisionTest {
         assertEquals(2, mutation.chunkIndex)
         assertTrue(mutation.isPassThrough())
     }
+
+    @Test
+    fun `challenge creates challenge decision`() {
+        val response = Decision.challenge("captcha", mapOf("site_key" to "abc123")).build()
+        val decision = response.decision as ProtocolDecision.Challenge
+        assertEquals("captcha", decision.challengeType)
+        assertEquals("abc123", decision.params["site_key"])
+    }
+
+    @Test
+    fun `challenge with default params`() {
+        val response = Decision.challenge("js_challenge").build()
+        val decision = response.decision as ProtocolDecision.Challenge
+        assertEquals("js_challenge", decision.challengeType)
+        assertTrue(decision.params.isEmpty())
+    }
 }

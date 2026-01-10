@@ -190,12 +190,13 @@ Decision.redirect("https://example.com/login")
 Decision.redirect("https://example.com/new-path", 301)
 ```
 
-#### `challenge(challengeType: String, params: Map<String, String>)`
+#### `challenge(type: String, params: Map<String, String> = emptyMap())`
 
-Create a challenge decision (e.g., CAPTCHA).
+Create a challenge decision (e.g., CAPTCHA, JavaScript challenge).
 
 ```kotlin
 Decision.challenge("captcha", mapOf("site_key" to "..."))
+Decision.challenge("js_challenge")  // No params needed
 ```
 
 ### Chaining Methods
@@ -402,6 +403,43 @@ Check if the path exactly matches.
 
 ```kotlin
 if (request.pathEquals("/health")) { /* ... */ }
+```
+
+#### `pathEndsWith(suffix: String)`
+
+Check if the path ends with a suffix.
+
+```kotlin
+if (request.pathEndsWith(".json")) { /* ... */ }
+```
+
+#### `pathContains(substring: String)`
+
+Check if the path contains a substring.
+
+```kotlin
+if (request.pathContains("admin")) { /* ... */ }
+```
+
+#### `pathMatches(regex: Regex)`
+
+Check if the path matches a regex pattern.
+
+```kotlin
+if (request.pathMatches(Regex("/api/users/\\d+"))) { /* ... */ }
+```
+
+### HTTP Method Checks
+
+#### `isGet()`, `isPost()`, `isPut()`, `isDelete()`, `isPatch()`, `isHead()`, `isOptions()`
+
+Check the HTTP method (case-insensitive).
+
+```kotlin
+if (request.isGet()) { /* ... */ }
+if (request.isPost()) { /* ... */ }
+if (request.isPut()) { /* ... */ }
+if (request.isDelete()) { /* ... */ }
 ```
 
 ### Header Methods
@@ -620,6 +658,34 @@ Set the log level (DEBUG, INFO, WARN, ERROR).
 #### `withJsonLogs()`
 
 Enable JSON log format.
+
+#### `withName(name: String)`
+
+Override the agent name for logging.
+
+```kotlin
+AgentRunner(MyAgent())
+    .withName("custom-agent-name")
+    .run()
+```
+
+#### `shutdown()`
+
+Request graceful shutdown. The agent will stop accepting new connections and exit cleanly.
+
+```kotlin
+val runner = AgentRunner(MyAgent())
+// Later...
+runner.shutdown()
+```
+
+### Signal Handling
+
+The agent runner automatically handles SIGINT and SIGTERM signals for graceful shutdown. When a shutdown signal is received, the runner will:
+1. Stop accepting new connections
+2. Wait for in-flight requests to complete
+3. Clean up the Unix socket file
+4. Exit cleanly
 
 ---
 

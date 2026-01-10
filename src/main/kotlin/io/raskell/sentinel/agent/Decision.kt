@@ -27,7 +27,9 @@ class Decision private constructor(
     private var statusCode: Int? = null,
     private var body: String? = null,
     private var blockHeaders: MutableMap<String, String>? = null,
-    private var redirectUrl: String? = null
+    private var redirectUrl: String? = null,
+    private var challengeType: String? = null,
+    private var challengeParams: Map<String, String>? = null
 ) {
     private val addRequestHeaders = mutableMapOf<String, String>()
     private val removeRequestHeaders = mutableListOf<String>()
@@ -44,7 +46,7 @@ class Decision private constructor(
     private var responseBodyMutation: BodyMutation? = null
 
     private enum class DecisionType {
-        ALLOW, BLOCK, REDIRECT
+        ALLOW, BLOCK, REDIRECT, CHALLENGE
     }
 
     // ========================================================================
@@ -221,6 +223,10 @@ class Decision private constructor(
                 url = redirectUrl ?: "/",
                 status = statusCode ?: 302
             )
+            DecisionType.CHALLENGE -> ProtocolDecision.Challenge(
+                challengeType = challengeType ?: "captcha",
+                params = challengeParams ?: emptyMap()
+            )
         }
 
         val requestHeaderOps = buildRequestMutations()
@@ -308,5 +314,17 @@ class Decision private constructor(
 
         /** Create a permanent redirect (301). */
         fun redirectPermanent(url: String): Decision = redirect(url, 301)
+
+        /**
+         * Create a challenge decision (e.g., CAPTCHA, JavaScript challenge).
+         *
+         * @param type The challenge type (e.g., "captcha", "js_challenge")
+         * @param params Additional parameters for the challenge
+         */
+        fun challenge(type: String, params: Map<String, String> = emptyMap()): Decision = Decision(
+            decisionType = DecisionType.CHALLENGE,
+            challengeType = type,
+            challengeParams = params
+        )
     }
 }

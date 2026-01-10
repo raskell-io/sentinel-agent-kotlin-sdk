@@ -35,9 +35,13 @@ class AgentRunner(private val agent: Agent) {
     private var socketPath: String = "/tmp/sentinel-agent.sock"
     private var logLevel: String = "INFO"
     private var jsonLogs: Boolean = false
+    private var agentName: String? = null
 
     private val requestCache = ConcurrentHashMap<String, Request>()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    @Volatile
+    private var running = true
 
     /**
      * Set the Unix socket path.
@@ -64,12 +68,34 @@ class AgentRunner(private val agent: Agent) {
     }
 
     /**
+     * Override the agent name for logging.
+     */
+    fun withName(name: String): AgentRunner {
+        agentName = name
+        return this
+    }
+
+    /**
+     * Get the effective agent name (override or from agent).
+     */
+    private fun effectiveName(): String = agentName ?: agent.name
+
+    /**
+     * Request graceful shutdown.
+     */
+    fun shutdown() {
+        running = false
+    }
+
+    /**
      * Run the agent server.
      *
      * This method blocks until the server is shut down.
+     * Handles SIGINT and SIGTERM for graceful shutdown.
      */
     suspend fun run() = withContext(Dispatchers.IO) {
-        logger.info { "Starting agent '${agent.name}' on socket $socketPath" }
+        val name = effectiveName()
+        logger.info { "Starting agent '$name' on socket $socketPath" }
 
         // Remove existing socket file
         File(socketPath).delete()
@@ -78,19 +104,42 @@ class AgentRunner(private val agent: Agent) {
         val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
         serverChannel.bind(address)
 
-        logger.info { "Agent '${agent.name}' listening on $socketPath" }
+        // Configure non-blocking for interrupt handling
+        serverChannel.configureBlocking(false)
+
+        // Register shutdown hooks for graceful termination
+        val shutdownHook = Thread {
+            logger.info { "Received shutdown signal, stopping agent '$name'..." }
+            running = false
+        }
+        Runtime.getRuntime().addShutdownHook(shutdownHook)
+
+        logger.info { "Agent '$name' listening on $socketPath" }
 
         try {
-            while (isActive) {
+            while (isActive && running) {
                 val clientChannel = serverChannel.accept()
-                scope.launch {
-                    handleClient(clientChannel)
+                if (clientChannel != null) {
+                    clientChannel.configureBlocking(true)
+                    scope.launch {
+                        handleClient(clientChannel)
+                    }
+                } else {
+                    // No connection available, sleep briefly to avoid busy-waiting
+                    delay(10)
                 }
             }
         } finally {
+            logger.info { "Shutting down agent '$name'..." }
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdownHook)
+            } catch (e: IllegalStateException) {
+                // JVM is already shutting down
+            }
             scope.cancel()
             serverChannel.close()
             File(socketPath).delete()
+            logger.info { "Agent '$name' stopped" }
         }
     }
 
@@ -242,6 +291,12 @@ class AgentRunner(private val agent: Agent) {
 /**
  * Run an agent with CLI argument parsing.
  *
+ * Supported arguments:
+ * - `--socket=PATH` or `--socket PATH`: Unix socket path (default: /tmp/sentinel-agent.sock)
+ * - `--log-level=LEVEL` or `--log-level LEVEL`: Log level (default: INFO)
+ * - `--json-logs`: Enable JSON log output
+ * - `--name=NAME` or `--name NAME`: Override agent name for logging
+ *
  * Example:
  * ```kotlin
  * fun main(args: Array<String>) {
@@ -251,12 +306,15 @@ class AgentRunner(private val agent: Agent) {
  */
 fun runAgent(agent: Agent, args: Array<String> = emptyArray()) {
     val socketPath = args.find { it.startsWith("--socket=") }?.substringAfter("=")
-        ?: args.getOrNull(args.indexOf("--socket") + 1)
+        ?: args.getOrNull(args.indexOf("--socket") + 1)?.takeIf { !it.startsWith("--") }
         ?: "/tmp/sentinel-agent.sock"
 
     val logLevel = args.find { it.startsWith("--log-level=") }?.substringAfter("=")
-        ?: args.getOrNull(args.indexOf("--log-level") + 1)
+        ?: args.getOrNull(args.indexOf("--log-level") + 1)?.takeIf { !it.startsWith("--") }
         ?: "INFO"
+
+    val agentName = args.find { it.startsWith("--name=") }?.substringAfter("=")
+        ?: args.getOrNull(args.indexOf("--name") + 1)?.takeIf { !it.startsWith("--") }
 
     val jsonLogs = args.contains("--json-logs")
 
@@ -265,6 +323,7 @@ fun runAgent(agent: Agent, args: Array<String> = emptyArray()) {
             .withSocket(socketPath)
             .withLogLevel(logLevel)
             .apply { if (jsonLogs) withJsonLogs() }
+            .apply { agentName?.let { withName(it) } }
             .run()
     }
 }
